@@ -1,0 +1,12 @@
+debian/init.d-functions usr/share/postgresql-common
+pg_lsclusters usr/bin
+pg_createcluster usr/bin
+pg_dropcluster usr/bin
+pg_ctlcluster usr/bin
+pg_upgradecluster usr/bin
+pg_updatedicts usr/sbin
+upgrade-scripts/* usr/share/postgresql-common/upgrade-scripts
+run-upgrade-scripts usr/share/postgresql-common
+pg_checksystem usr/share/postgresql-common
+testsuite usr/share/postgresql-common
+t/* usr/share/postgresql-common/t
