@@ -55,31 +55,11 @@ sub get_running_pid {
     }
 }
 
-# Check whether a pid file is present and belongs to a running postmaster.
-# Arguments: <pid file path>
-sub check_running_postmaster {
-    my $pid = get_running_pid $_[0];
-    if (defined $pid) {
-	if (open PS, '-|', '/bin/ps', '-o', 'comm', 'h', 'p', $pid) {
-	    my $process = <PS>;
-	    chomp $process if defined $process;
-	    close PS;
-	    if (defined $process and ($process eq 'postmaster' or $process eq 'postgres')) {
-                return 1;
-            }
-        } else {
-            error "Could not exec /bin/ps";
-        }
-    }
-    return 0;
-
-}
-
 # If a pid file is already present, delete it if it is stale/invalid, or exit
 # with a notice if it belongs to an already running postmaster.
 sub start_check_pid_file {
     my $pidfile = $info{'pgdata'}.'/postmaster.pid';
-    if (check_running_postmaster $pidfile) {
+    if (PgCommon::check_pidfile_running $pidfile) {
         print "Cluster is already running.\n";
         exit 2;
     }
@@ -95,7 +75,7 @@ sub start_check_pid_file {
 sub stop_check_pid_file {
     my $pidfile = $info{'pgdata'}.'/postmaster.pid';
     my $pid = get_running_pid $pidfile;
-    return if (defined $pid && check_running_postmaster $pidfile); 
+    return if (defined $pid && PgCommon::check_pidfile_running $pidfile); 
     if ($info{'running'}) {
 	error 'pid file is invalid, please manually kill the stale server process.';
     }
@@ -232,7 +212,7 @@ sub start {
 
         # if the postmaster wrote something, but the process does not exist any
         # more, there must be a problem and we can stop immediately
-        last if ($currlogsize > $logsize && !check_running_postmaster $pidfile);
+        last if ($currlogsize > $logsize && !PgCommon::check_pidfile_running $pidfile);
     }
 
     # OK, the server runs, now wait until it stabilized
@@ -241,7 +221,7 @@ sub start {
     }
 
     if (!$success) {
-        if ($logsize) {
+        if ($currlogsize) {
             print STDERR "The PostgreSQL server failed to start. Please check the log output:\n";
             open LOG, $info{'logfile'} or 
                 error "Could not open log file " . $info{'logfile'};
@@ -280,7 +260,6 @@ sub stop {
             print "(does not shutdown, killing the process)";
             $pid = get_running_pid $info{'pgdata'}.'/postmaster.pid';
             kill (9, $pid) if $pid;
-            unlink $info{'pgdata'}.'/postmaster.pid';
 	    $result = 0;
         }
     } else {
@@ -313,6 +292,10 @@ sub restart {
 
 sub reload {
     exec $pg_ctl, '-D', $info{'pgdata'}, '-s', @pg_ctl_opts_from_cli, 'reload';
+}
+
+sub promote {
+    exec $pg_ctl, '-D', $info{'pgdata'}, '-s', @pg_ctl_opts_from_cli, 'promote';
 }
 
 #
@@ -377,6 +360,20 @@ if ($info{'logfile'} && ! -e $info{'logfile'}) {
 }
 
 if ($> == 0) {
+    # have the postmaster start with increased OOM killer protection; 9.1 and
+    # later has builtin support for resetting the adjustment of child processes
+    if ($action eq 'start' && $version ge '9.1') {
+        if (-w '/proc/self/oom_score_adj') {
+	    open F, '>/proc/self/oom_score_adj';
+	    print F "-900\n";
+	    close F;
+	} elsif (-w '/proc/self/oom_adj') {
+	    open F, '>/proc/self/oom_adj';
+	    print F "-16\n";
+	    close F;
+	}
+    }
+
     chdir ('/var/lib/postgresql');
     change_ugid $info{'owneruid'}, $info{'ownergid'};
 }
@@ -389,13 +386,13 @@ if( $> != $info{'owneruid'} ) {
 $pg_ctl = get_program_path 'pg_ctl', $version;
 
 %actions = ('start' => \&start, 'stop' => \&stop, 'reload' => \&reload,
-            'restart' => \&restart);
+            'restart' => \&restart, 'promote' => \&promote);
 
 if ($actions{$action}) {
     exit $actions{$action}->();
 } else {
-    error 'Error: invalid action (must be one of: '. 
-        (join ', ', keys %actions);
+    error 'Error: invalid action (must be one of: '.
+        (join ', ', sort keys %actions) . ')';
 }
 
 __END__
@@ -408,7 +405,7 @@ pg_ctlcluster - start/stop/restart/reload a PostgreSQL cluster
 
 B<pg_ctlcluster> [I<options>] I<cluster-version> I<cluster-name> I<action> B<--> [I<pg_ctl options>]
 
-where I<action> = B<start>|B<stop>|B<restart>|B<reload>
+where I<action> = B<start>|B<stop>|B<restart>|B<reload>|B<promote>
 
 =head1 DESCRIPTION
 
@@ -456,6 +453,11 @@ Stops the server if it is running and starts it (again).
 Causes the configuration files to be re-read without a full shutdown of the
 server.
 
+=item B<promote>
+
+Commands a running standby server to exit recovery and begin read-write
+operations.
+
 =back
 
 =head1 OPTIONS
@@ -479,7 +481,7 @@ for a description of valid options.
 
 =over 4
 
-=item C</etc/postgresql/>I<cluster-version>C</>I<cluster-name>C</pg_ctl.options>
+=item C</etc/postgresql/>I<cluster-version>C</>I<cluster-name>C</pg_ctl.conf>
 
 This configuration file contains cluster specific options to be passed to
 L<pg_ctl(1)>.

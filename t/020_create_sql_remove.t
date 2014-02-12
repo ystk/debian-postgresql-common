@@ -3,14 +3,15 @@
 
 use strict; 
 
+use POSIX qw/dup2/;
+
 use lib 't';
 use TestLib;
 
 use lib '/usr/share/postgresql-common';
 use PgCommon;
 
-use Test::More tests => 99 * ($#MAJORS+1);
-
+use Test::More tests => 115 * ($#MAJORS+1);
 
 sub check_major {
     my $v = $_[0];
@@ -138,7 +139,7 @@ sub check_major {
     # Create user nobody, a database 'nobodydb' for him, check the database list
     my $outref;
     is ((exec_as 'nobody', 'psql -l 2>/dev/null', $outref), 2, 'psql -l fails for nobody');
-    is ((exec_as 'postgres', 'createuser nobody -D -R -s'), 0, 'createuser nobody');
+    is ((exec_as 'postgres', 'createuser nobody -D -R -S'), 0, 'createuser nobody');
     is ((exec_as 'postgres', 'createdb -O nobody nobodydb'), 0, 'createdb nobodydb');
     is ((exec_as 'nobody', 'psql -ltA|grep "|" | cut -f1-3 -d"|"', $outref), 0, 'psql -ltA succeeds for nobody');
     is ($$outref, 'nobodydb|nobody|UTF8
@@ -160,9 +161,19 @@ template1|postgres|UTF8
 Bob|1
 ', 'SQL command output: select';
 
-    # Check PL/Perl (trusted/untrusted)
-    is_program_out 'postgres', 'createlang plperl nobodydb', 0, '', 'createlang plperl succeeds for user postgres';
+    # Check PL/Perl untrusted
+    my $fn_cmd = 'CREATE FUNCTION read_file() RETURNS text AS \'open F, \\"/etc/passwd\\"; \\$buf = <F>; close F; return \\$buf;\' LANGUAGE plperl';
+    is ((exec_as 'nobody', 'createlang plperlu nobodydb'), 1, 'createlang plperlu fails for user nobody');
     is_program_out 'postgres', 'createlang plperlu nobodydb', 0, '', 'createlang plperlu succeeds for user postgres';
+    is ((exec_as 'nobody', "psql nobodydb -qc \"${fn_cmd}u;\""), 1, 'creating PL/PerlU function as user nobody fails');
+    is ((exec_as 'postgres', "psql nobodydb -qc \"${fn_cmd};\""), 1, 'creating unsafe PL/Perl function as user postgres fails');
+    is_program_out 'postgres', "psql nobodydb -qc \"${fn_cmd}u;\"", 0, '', 'creating PL/PerlU function as user postgres succeeds';
+    like_program_out 'nobody', 'psql nobodydb -Atc "select read_file()"',
+	0, qr/^root:/, 'calling PL/PerlU function';
+
+    # Check PL/Perl trusted
+    is_program_out 'nobody', 'createlang plperl nobodydb', 0, '', 'createlang plperl succeeds for user nobody';
+    is ((exec_as 'nobody', "psql nobodydb -qc \"${fn_cmd};\""), 1, 'creating unsafe PL/Perl function as user nobody fails');
     is_program_out 'nobody', 'psql nobodydb -qc "CREATE FUNCTION remove_vowels(text) RETURNS text AS \'\\$_[0] =~ s/[aeiou]/_/ig; return \\$_[0];\' LANGUAGE plperl;"',
 	0, '', 'creating PL/Perl function as user nobody succeeds';
     is_program_out 'nobody', 'psql nobodydb -Atc "select remove_vowels(\'foobArish\')"',
@@ -170,10 +181,26 @@ Bob|1
 
     # Check PL/Python (untrusted)
     is_program_out 'postgres', 'createlang plpythonu nobodydb', 0, '', 'createlang plpythonu succeeds for user postgres';
-    is_program_out 'postgres', 'psql nobodydb -qc "CREATE FUNCTION capitalize(text) RETURNS text AS \'return args[0].capitalize()\' LANGUAGE plpythonu;"',
+    is_program_out 'postgres', 'psql nobodydb -qc "CREATE FUNCTION capitalize(text) RETURNS text AS \'import sys; return args[0].capitalize() + sys.version[0]\' LANGUAGE plpythonu;"',
 	0, '', 'creating PL/Python function as user postgres succeeds';
     is_program_out 'nobody', 'psql nobodydb -Atc "select capitalize(\'foo\')"',
-	0, "Foo\n", 'calling PL/Python function';
+	0, "Foo2\n", 'calling PL/Python function';
+
+    # Check PL/Python3 (untrusted)
+    if ($v ge '9.1') {
+	is_program_out 'postgres', 'createlang plpython3u nobodydb', 0, '', 'createlang plpython3u succeeds for user postgres';
+	is_program_out 'postgres', 'psql nobodydb -qc "CREATE FUNCTION capitalize3(text) RETURNS text AS \'import sys; return args[0].capitalize() + sys.version[0]\' LANGUAGE plpython3u;"',
+	    0, '', 'creating PL/Python3 function as user postgres succeeds';
+	is_program_out 'nobody', 'psql nobodydb -Atc "select capitalize3(\'foo\')"',
+	    0, "Foo3\n", 'calling PL/Python function';
+    } else {
+	pass "Skipping PL/Python3 test for version $v...";
+	pass '...';
+	pass '...';
+	pass '...';
+	pass '...';
+	pass '...';
+    }
 
     # Check PL/Tcl (trusted/untrusted)
     is_program_out 'postgres', 'createlang pltcl nobodydb', 0, '', 'createlang pltcl succeeds for user postgres';
@@ -215,6 +242,47 @@ Bob|1
     PgCommon::disable_conf_value $v, 'main', 'postgresql.conf', 'data_directory', 'disabled for test';
     is_program_out 0, "pg_ctlcluster $v main start", 0, '',
         'cluster restarts with pgdata symlink';
+
+    # OOM score adjustment under Linux: postmaster gets bigger shields for >=
+    # 9.1, but client backends stay at default
+    my $psql = fork;
+    if (!$psql) {
+	my @pw = getpwnam 'nobody';
+	change_ugid $pw[2], $pw[3];
+	dup2(POSIX::open('/dev/zero', POSIX::O_RDONLY), 0);
+	dup2(POSIX::open('/dev/null', POSIX::O_WRONLY), 1);
+	exec 'psql', 'nobodydb' or die "could not exec psql process: $!";
+    }
+
+    my $master_pid = `ps --user postgres hu | grep 'bin/postgres.*-D' | grep -v grep | awk '{print \$2}'`;
+    chomp $master_pid;
+
+    my $client_pid;
+    while (!$client_pid) {
+	sleep 0.1;
+	$client_pid = `ps --user postgres hu | grep 'postgres: nobody nobodydb' | grep -v grep | awk '{print \$2}'`;
+    }
+    chomp $client_pid;
+
+    my $adj;
+    open F, "/proc/$master_pid/oom_adj";
+    $adj = <F>;
+    chomp $adj;
+    close F;
+    if ($v ge '9.1') {
+	cmp_ok $adj, '<=', -5, 'postgres >= 9.1 master has OOM killer protection';
+    } else {
+	is $adj, 0, 'postgres < 9.1 master has no OOM adjustment';
+    }
+
+    open F, "/proc/$client_pid/oom_adj";
+    $adj = <F>;
+    chomp $adj;
+    close F;
+    is $adj, 0, 'postgres client backend has no OOM adjustment';
+
+    kill 9, $psql;
+    waitpid $psql, 0;
 
     # Drop database and user again.
     sleep 1;

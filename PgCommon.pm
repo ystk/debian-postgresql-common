@@ -1,6 +1,7 @@
 # Common functions for the postgresql-common framework
 #
 # (C) 2008-2009 Martin Pitt <mpitt@debian.org>
+# (C) 2012 Christoph Berg <myon@debian.org
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -29,20 +30,23 @@ our @EXPORT = qw/error user_cluster_map get_cluster_port set_cluster_port
     get_cluster_databases read_cluster_conf_file read_pg_hba/;
 our @EXPORT_OK = qw/$confroot read_conf_file get_conf_value set_conf_value
     disable_conf_value replace_conf_value cluster_data_directory
-    get_file_device/;
-
-# configuration
-my $mapfile = "/etc/postgresql-common/user_clusters";
-our $confroot = $ENV{'PG_CLUSTER_CONF_ROOT'} || "/etc/postgresql";
-my $common_confdir = "/etc/postgresql-common";
-my $binroot = "/usr/lib/postgresql";
-my $defaultport = 5432;
+    get_file_device read_pidfile check_pidfile_running/;
 
 # Print an error message to stderr and exit with status 1
 sub error {
     print STDERR 'Error: ', $_[0], "\n";
     exit 1;
 }
+
+# configuration
+my $mapfile = "/etc/postgresql-common/user_clusters";
+our $confroot = '/etc/postgresql';
+if ($ENV{'PG_CLUSTER_CONF_ROOT'}) {
+    ($confroot) = $ENV{'PG_CLUSTER_CONF_ROOT'} =~ /(.*)/; # untaint
+}
+my $common_confdir = "/etc/postgresql-common";
+my $binroot = "/usr/lib/postgresql";
+my $defaultport = 5432;
 
 {
     my %saved_env;
@@ -86,6 +90,9 @@ sub config_bool {
 
 # Read a 'var = value' style configuration file and return a hash with the
 # values. Error out if the file cannot be read.
+# If the file name ends with '.conf', the keys will be normalized to lower case
+# (suitable for e. g. postgresql.conf), otherwise kept intact (suitable for
+# environment).
 # Arguments: <path>
 # Returns: hash (empty if file does not exist)
 sub read_conf_file {
@@ -98,7 +105,7 @@ sub read_conf_file {
         while (<F>) {
             if (/^\s*(?:#.*)?$/) {
                 next;
-	    } elsif (/^\s*include\s+'([^']+)'\s*$/) {
+	    } elsif (/^\s*include\s+'([^']+)'\s*$/i) {
 		my ($k, $v, $path, %include_conf);
 		$path = $1;
 		unless (substr($path, 0, 1) eq '/') {
@@ -113,15 +120,19 @@ sub read_conf_file {
 		    $conf{$k} = $v;
 		}
 
-            } elsif (/^\s*([a-zA-Z0-9_.-]+)\s*=\s*'((?:[^']|(?:(?<=\\)'))*)'\s*(?:#.*)?$/) {
+            } elsif (/^\s*([a-zA-Z0-9_.-]+)\s*(?:=|\s)\s*'((?:[^']|(?:(?<=\\)'))*)'\s*(?:#.*)?$/i) {
                 # string value
-                my $k = $1;
                 my $v = $2;
+                my $k = $1;
+		$k = lc $k if $_[0] =~ /\.conf$/;
                 $v =~ s/\\(.)/$1/g;
                 $conf{$k} = $v;
-            } elsif (/^\s*([a-zA-Z0-9_.-]+)\s*=\s*(-?[\w.]+)\s*(?:#.*)?$/) {
+            } elsif (/^\s*([a-zA-Z0-9_.-]+)\s*(?:=|\s)\s*(-?[\w.]+)\s*(?:#.*)?$/i) {
                 # simple value
-                $conf{$1} = $2;
+                my $v = $2;
+		my $k = $1;
+		$k = lc $k if $_[0] =~ /\.conf$/;
+                $conf{$k} = $v;
             } else {
                 error "Invalid line $. in $_[0]: »$_«";
             }
@@ -172,14 +183,30 @@ sub set_conf_value {
     close F;
 
     my $found = 0;
+    # first, search for an uncommented setting
     for (my $i=0; $i <= $#lines; ++$i) {
-	if ($lines[$i] =~ /^\s*#?\s*$_[3]\s*=\s*\w+\b((?:\s*#.*)?)/ or
-	    $lines[$i] =~ /^\s*#?\s*$_[3]\s*=\s*'[^']*'((?:\s*#.*)?)/) {
-	    $lines[$i] = "$_[3] = $value$1\n";
+	if ($lines[$i] =~ /^\s*($_[3])(\s*(?:=|\s)\s*)\w+\b((?:\s*#.*)?)/i or
+	    $lines[$i] =~ /^\s*($_[3])(\s*(?:=|\s)\s*)'[^']*'((?:\s*#.*)?)/i) {
+	    $lines[$i] = "$1$2$value$3\n";
 	    $found = 1;
 	    last;
 	}
     }
+
+    # now check if the setting exists as a comment; if so, change that instead
+    # of appending
+    if (!$found) {
+	for (my $i=0; $i <= $#lines; ++$i) {
+	    if ($lines[$i] =~ /^\s*#\s*($_[3])(\s*(?:=|\s)\s*)\w+\b((?:\s*#.*)?)/i or
+		$lines[$i] =~ /^\s*#\s*($_[3])(\s*(?:=|\s)\s*)'[^']*'((?:\s*#.*)?)/i) {
+		$lines[$i] = "$1$2$value$3\n";
+		$found = 1;
+		last;
+	    }
+	}
+    }
+
+    # not found anywhere, append it
     push (@lines, "$_[3] = $value\n") unless $found;
 
     # write configuration file lines
@@ -212,7 +239,7 @@ sub disable_conf_value {
 
     my $changed = 0;
     for (my $i=0; $i <= $#lines; ++$i) {
-	if ($lines[$i] =~ /^\s*$_[3]\s*=/) {
+	if ($lines[$i] =~ /^\s*$_[3]\s*(?:=|\s)/i) {
 	    $lines[$i] = '#'.$lines[$i];
 	    chomp $lines[$i];
             $lines[$i] .= ' #'.$_[4]."\n" if $_[4];
@@ -260,7 +287,7 @@ sub replace_conf_value {
 
     my $found = 0;
     for (my $i = 0; $i <= $#lines; ++$i) {
-	if ($lines[$i] =~ /^\s*$oldparam\s*=/) {
+	if ($lines[$i] =~ /^\s*$oldparam\s*(?:=|\s)/i) {
 	    $lines[$i] = '#'.$lines[$i];
 	    chomp $lines[$i];
             $lines[$i] .= ' #'.$reason."\n" if $reason;
@@ -478,6 +505,53 @@ pg_ctl_options = '$opts'
     close F;
 }
 
+# Return the PID from an existing PID file or undef if it does not exist.
+# Arguments: <pid file path>
+sub read_pidfile {
+    return undef unless -e $_[0];
+
+    if (open PIDFILE, $_[0]) {
+	my $pid = <PIDFILE>;
+	close PIDFILE;
+        chomp $pid;
+        ($pid) = $pid =~ /^(\d+)\s*$/; # untaint
+	return $pid;
+    } else {
+	return undef;
+    }
+}
+
+# Check whether a pid file is present and belongs to a running postmaster.
+# Returns undef if it cannot be determined
+# Arguments: <pid file path>
+sub check_pidfile_running {
+    # postmaster does not clean up the PID file when it stops, and it is
+    # not world readable, so only its absence is a definitive result; if it
+    # is present, we need to read it and check the PID, which will only
+    # work as root
+    return 0 if ! -e $_[0];
+
+    my $pid = read_pidfile $_[0];
+    if (defined $pid) {
+	prepare_exec;
+	my $res = open PS, '-|', '/bin/ps', '-o', 'comm', 'h', 'p', $pid;
+	restore_exec;
+	if ($res) {
+	    my $process = <PS>;
+	    chomp $process if defined $process;
+	    close PS;
+	    if (defined $process and ($process eq 'postmaster' or $process eq 'postgres')) {
+                return 1;
+            } else {
+		return 0;
+	    }
+        } else {
+            error "Could not exec /bin/ps";
+        }
+    }
+    return undef;
+}
+
 # Return a hash with information about a specific cluster.
 # Arguments: <version> <cluster name>
 # Returns: information hash (keys: pgdata, port, running, logfile [unless it
@@ -491,10 +565,23 @@ sub cluster_info {
     $result{'pgdata'} = cluster_data_directory $_[0], $_[1], \%postgresql_conf;
     $result{'port'} = $postgresql_conf{'port'} || $defaultport;
     $result{'socketdir'} = get_cluster_socketdir  $_[0], $_[1];
-    $result{'running'} = cluster_port_running ($_[0], $_[1], $result{'port'});
+
+    # if we can determine the running status with the pid file, prefer that
+    if ($postgresql_conf{'external_pid_file'} &&
+	$postgresql_conf{'external_pid_file'} ne '(none)') {
+	$result{'running'} = check_pidfile_running $postgresql_conf{'external_pid_file'};
+    }
+
+    # otherwise fall back to probing the port; this is unreliable if the port
+    # was changed in the configuration file in the meantime
+    if (!defined ($result{'running'})) {
+	$result{'running'} = cluster_port_running ($_[0], $_[1], $result{'port'});
+    }
+
     if ($result{'pgdata'}) {
         ($result{'owneruid'}, $result{'ownergid'}) = 
             (stat $result{'pgdata'})[4,5];
+        $result{'recovery'} = -e "$result{'pgdata'}/recovery.conf";
     }
     $result{'start'} = get_cluster_start_conf $_[0], $_[1];
 
@@ -584,18 +671,35 @@ sub next_free_port {
     }
 
     my $port;
-    for ($port = $defaultport; ; ++$port) {
+    for ($port = $defaultport; $port < 65536; ++$port) {
 	next if grep { $_ == $port } @ports;
 
         # check if port is already in use
-        socket (SOCK, PF_INET, SOCK_STREAM, getprotobyname('tcp')) or 
+	my ($have_ip4, $res4, $have_ip6, $res6);
+	if (socket (SOCK, PF_INET, SOCK_STREAM, getprotobyname('tcp'))) { # IPv4
+	    $have_ip4 = 1;
+	    $res4 = bind (SOCK, sockaddr_in($port, INADDR_ANY));
+	}
+	$have_ip6 = 0;
+	no strict; # avoid compilation errors with Perl < 5.14
+	if (exists $Socket::{"IN6ADDR_ANY"}) { # IPv6
+	    if (socket (SOCK, PF_INET6, SOCK_STREAM, getprotobyname('tcp'))) {
+		$have_ip6 = 1;
+		$res6 = bind (SOCK, sockaddr_in6($port, Socket::IN6ADDR_ANY));
+	    }
+	}
+	use strict;
+	unless ($have_ip4 or $have_ip6) {
+	    # require at least one protocol to work (PostgreSQL needs it anyway
+	    # for the stats collector)
             die "could not create socket: $!";
-        my $res = bind (SOCK, sockaddr_in($port, INADDR_ANY));
+	}
         close SOCK;
-        last if $res;
+	# return port if it is available on all supported protocols
+	return $port if ($have_ip4 ? $res4 : 1) and ($have_ip6 ? $res6 : 1);
     }
 
-    return $port;
+    die "no free port found";
 }
 
 # Return the PostgreSQL version, cluster, and database to connect to. version
@@ -767,13 +871,13 @@ sub get_db_locales {
         die "Internal error: could not call $psql to determine db lc_ctype: $!";
     my $out = <PSQL>;
     close PSQL;
-    ($ctype) = $out =~ /^([\w.-]+)$/; # untaint
+    ($ctype) = $out =~ /^([\w.\@-]+)$/; # untaint
     open PSQL, '-|', $psql, '-h', $socketdir, '-p', $port, '-Atc', 
         'SHOW lc_collate', $db or 
         die "Internal error: could not call $psql to determine db lc_collate: $!";
     $out = <PSQL>;
     close PSQL;
-    ($collate) = $out =~ /^([\w.-]+)$/; # untaint
+    ($collate) = $out =~ /^([\w.\@-]+)$/; # untaint
     $> = $orig_euid;
     restore_exec;
     chomp $ctype;

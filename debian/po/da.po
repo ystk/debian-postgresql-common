@@ -1,26 +1,25 @@
-# Dutch postgresql-common po-debconf translation,
-# Copyright (C) 2011 THE PACKAGE'S COPYRIGHT HOLDER
+# Danish translation postgresql-common.
+# Copyright (C) 2011 THE PACKAGE'S COPYRIGHT HOLDER.
 # This file is distributed under the same license as the postgresql-common package.
-# Vincent Zweije <zweije@xs4all.nl>, 2006.
-# Vincent Zweije <vincent@zweije.nl>, 2011.
+# Joe Hansen (joedalton2@yahoo.dk), 2011.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: postgresql-common 115\n"
+"Project-Id-Version: postgresql-common\n"
 "Report-Msgid-Bugs-To: Source: postgresql-common@packages.debian.org\n"
 "POT-Creation-Date: 2008-02-03 13:01+0100\n"
-"PO-Revision-Date: 2011-05-13 10:55+0000\n"
-"Last-Translator: Vincent Zweije <vincent@zweiej.nl>\n"
-"Language-Team: Debian-Dutch <debian-l10n-dutch@lists.debian.org>\n"
+"PO-Revision-Date: 2011-03-20 19:25+0200\n"
+"Last-Translator: Joe Hansen <joedalton2@yahoo.dk>\n"
+"Language-Team: Danish <debian-l10n-danish@lists.debian.org>\n"
 "MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=utf-8\n"
+"Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
 #. Type: error
 #. Description
 #: ../postgresql-common.templates:2001
 msgid "Obsolete major version ${old}"
-msgstr "Verouderde hoofdversie ${old}"
+msgstr "Forældet hovedversion ${old}"
 
 #. Type: error
 #. Description
@@ -31,10 +30,10 @@ msgid ""
 "${latest} and postgresql-client-${latest}) and upgrade the existing "
 "${oldversion} clusters with pg_upgradecluster (see manpage)."
 msgstr ""
-"De PostgreSQL versie ${old} is verouderd, maar het server- en/of clientpakket "
-"zijn nog geïnstalleerd. U dient de nieuwste pakketten (postgresql-${latest} "
-"en postgresql-client-${latest}) te installeren en uw bestaande ${oldversion} "
-"groepen (clusters) op te waarderen met pg_upgradecluster (zie de man-pagina)."
+"PostgreSQL-versionen ${old} er forældet, men server- eller klientpakkerne "
+"er stadig installeret. Installer venligst de seneste pakker (postgresql-"
+"${latest} og postgresql-client-${latest}) og opgrader de eksisterende "
+"${oldversion}-klynger med pg_upgradecluster (se manpage)."
 
 #. Type: error
 #. Description
@@ -46,10 +45,11 @@ msgid ""
 "${latest} cluster (pg_dropcluster --stop ${latest} main, see manpage for "
 "details)."
 msgstr ""
-"Let op: de installatie van postgresql-${latest} zal automatisch een "
-"standaard groep ${latest}/main aanmaken. Indien u de ${old}/main groep wilt "
-"opwaarderen dient u de reeds bestaande ${latest} groep te verwijderen met "
-"\"pg_dropcluster --stop ${latest} main\". Zie de man-pagina voor details."
+"Vær venligst opmærksom på at installationen af postgresql-${latest} "
+"automatisk vil oprette en standardklynge ${latest}/main. Hvis du ønsker at "
+"opgradere ${old}/main-klyngen, skal du fjerne den allerede eksisterende "
+"${latest}-klynge (pg_dropcluster --stop ${latest} main, se manpage for "
+"detaljer)."
 
 #. Type: error
 #. Description
@@ -59,9 +59,9 @@ msgid ""
 "existing clusters are upgraded, the postgresql-${old} and postgresql-client-"
 "${old} packages should be removed."
 msgstr ""
-"De oude server- en clientpakketten worden niet langer ondersteund. Nadat u "
-"de bestaande groepen hebt opgewaardeerd, kunt u het beste de postgresql-"
-"${old} en postgresql-client-${old} pakketten verwijderen."
+"De gamle server- og klientpakker er ikke længere understøttet. Efter de "
+"eksisterende klynger er opgraderet, bør pakkerne postgresql-${old} og "
+"postgresql-client-${old} fjernes."
 
 #. Type: error
 #. Description
@@ -69,4 +69,5 @@ msgstr ""
 msgid ""
 "Please see /usr/share/doc/postgresql-common/README.Debian.gz for details."
 msgstr ""
-"Zie /usr/share/doc/postgresql-common/README.Debian.gz voor details."
+"Se venligst /usr/share/doc/postgresql-common/README.Debian.gz for detaljer."
+

@@ -1,0 +1,35 @@
+#!/bin/sh
+# Generate and upload backports for Ubuntu PPA
+# Author: Martin Pitt <mpitt@debian.org>
+
+set -e
+
+if [ -n "`bzr modified`" ]; then
+    echo "Modified files, aborting" >&2
+    exit 1
+fi
+
+SRC=`dpkg-parsechangelog  | grep ^Source | cut -f2- -d' '`
+if [ "$SRC" = postgresql-9.1 ]; then
+    RELEASES='lucid natty'
+elif [ "$SRC" = postgresql-9.2 ]; then
+    RELEASES='lucid oneiric precise'
+else
+    RELEASES='lucid natty oneiric precise'
+fi
+
+CUR_VERSION=`dpkg-parsechangelog | grep ^Version | cut -f2 -d' '`
+SINCE_VERSION=`dpkg-parsechangelog -n2 | grep urgency=| tail -n1 | awk '{print $2}' | tr -d '()'`
+
+
+export DEBEMAIL=martin.pitt@ubuntu.com
+
+for release in $RELEASES; do
+    dch -D$release -v"$CUR_VERSION~${release}" -b 'Backport'
+    if [ "$release" = lucid -o "$release" = "natty" -o "$release" = oneiric ]; then
+        sed -i 's/dpkg-dev.*| hardening-wrapper/hardening-wrapper/' debian/control
+    fi
+    bzr bd -S -- -sd -v$SINCE_VERSION
+    bzr revert --no-backup debian/changelog debian/control
+    dput ppa:pitti/postgresql ../${SRC}_${CUR_VERSION}~${release}_source.changes
+done

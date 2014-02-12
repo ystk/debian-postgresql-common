@@ -9,15 +9,18 @@
 
 set -e
 
-DEFAULT="8.4\n9.0"
+DEFAULT="9.1"
 
 lsb_ubuntu() {
     case "$1" in
         8.04 | 8.10 | 9.04)
             /bin/echo -e "8.3\n8.4"
             ;;
-	9.10|10.04|10.10)
-            /bin/echo -e "8.4\n9.0"
+	9.10|10.04|10.10|11.04)
+            /bin/echo -e "8.4"
+            ;;
+	11.10|12.04)
+            /bin/echo -e "9.1"
             ;;
         *)
             echo "supported_versions: WARNING: Unknown Ubuntu release: $1" >&2
@@ -30,15 +33,19 @@ lsb_debian() {
     case "$1" in
         # Lenny
         5.0*)
-            /bin/echo -e "8.3\n8.4\n9.0"
+            /bin/echo -e "8.3"
             ;;
         # Squeeze
-        6.0* | testing)
+	6.0*)
             /bin/echo -e "8.4"
             ;;
+        # Wheezy
+	7|7.*)
+            /bin/echo -e "9.1"
+            ;;
         # unstable
-        unstable)
-            /bin/echo -e "8.4\n9.0"
+        testing | unstable)
+            /bin/echo -e "9.1"
             ;;
         *)
             echo "supported_versions: WARNING: Unknown Debian release: $1" >&2
