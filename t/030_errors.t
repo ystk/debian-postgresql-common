@@ -6,7 +6,7 @@ require File::Temp;
 
 use lib 't';
 use TestLib;
-use Test::More tests => 169;
+use Test::More tests => 158;
 
 use lib '/usr/share/postgresql-common';
 use PgCommon;
@@ -31,7 +31,7 @@ sub check_nonexisting_cluster_error {
     my $outref;
     my $result = exec_as 0, $_[0], $outref;
     is $result, 1, "'$_[0]' fails";
-    like $$outref, qr/(invalid version|does not exist)/i, "$_[0] gives error message about nonexisting cluster";
+    like $$outref, qr/(invalid version|does not exist|cannot upgrade)/i, "$_[0] gives error message about nonexisting cluster";
     unlike $$outref, qr/invalid symbolic link/i, "$_[0] does not print 'invalid symbolic link' gibberish";
 }
 
@@ -62,10 +62,11 @@ like_program_out 0, "pg_createcluster $version test -p 5432", 1,
     'pg_createcluster -p checks that port is already used';
 
 # chown cluster to an invalid user to test error
-(system "chown -R 99 /var/lib/postgresql/$version/main") == 0 or die "chown failed: $!";
+my $badid = 98;
+(system "chown -R $badid /var/lib/postgresql/$version/main") == 0 or die "chown failed: $!";
 is ((system "pg_ctlcluster $version main start 2>/dev/null"), 256,
     'pg_ctlcluster fails on invalid cluster owner uid');
-(system "chown -R postgres:99 /var/lib/postgresql/$version/main") == 0 or die "chown failed: $!";
+(system "chown -R postgres:$badid /var/lib/postgresql/$version/main") == 0 or die "chown failed: $!";
 is ((system "pg_ctlcluster $version main start 2>/dev/null"), 256,
     'pg_ctlcluster as root fails on invalid cluster owner gid');
 is ((exec_as 'postgres', "pg_ctlcluster $version main start"), 1,
@@ -80,7 +81,7 @@ ok_dir $socketdir, ['.s.PGSQL.5432', '.s.PGSQL.5432.lock'], "Socket is in $socke
 
 # stop cluster, check sockets
 ok ((system "pg_ctlcluster $version main stop") == 0,
-    'cluster stops after removing unix_socket_dir');
+    'cluster stops with custom unix_socket_dir');
 ok_dir $socketdir, [], "No sockets in $socketdir after stopping cluster";
 
 # remove default socket dir and check that the socket defaults to
@@ -90,14 +91,18 @@ open F, "+</etc/postgresql/$version/main/postgresql.conf" or
 my @lines = <F>;
 seek F, 0, 0 or die "seek: $!";
 truncate F, 0;
-@lines = grep !/^unix_socket_directory/, @lines;
+@lines = grep !/^unix_socket_dir/, @lines; # <= 9.2: "_directory", >= 9.3: "_directories"
 print F @lines;
 close F;
 
 ok ((system "pg_ctlcluster $version main start") == 0,
     'cluster starts after removing unix_socket_dir');
-ok_dir '/var/run/postgresql', ['.s.PGSQL.5432', '.s.PGSQL.5432.lock', "$version-main.pid"], 
-    'Socket is in default dir /var/run/postgresql';
+if ($PgCommon::rpm) {
+    ok ((grep { $_ eq '.s.PGSQL.5432' } @{TestLib::dircontent('/tmp')}) == 1, 'Socket is in /tmp');
+} else {
+    ok_dir '/var/run/postgresql', ['.s.PGSQL.5432', '.s.PGSQL.5432.lock', "$version-main.pid"], 
+        'Socket is in default dir /var/run/postgresql';
+}
 ok_dir $socketdir, [], "No sockets in $socketdir";
 
 # server should not stop with corrupt file
@@ -155,6 +160,12 @@ is_program_out 'postgres', "pg_ctlcluster --force $version main stop", 2,
     'pg_ctlcluster --force stop succeeds with stale PID file';
 ok (! -e $pf, 'pid file was cleaned up');
 
+create_pidfile '';
+is_program_out 'postgres', "pg_ctlcluster --force $version main stop", 2,
+    "Removed stale pid file.\nCluster is not running.\n", 
+    'pg_ctlcluster stop succeeds with empty PID file';
+ok (! -e $pf, 'pid file was cleaned up');
+
 # corrupt PID file while server is down
 create_pidfile 'foo';
 is_program_out 'postgres', "pg_ctlcluster $version main start", 0,
@@ -192,7 +203,7 @@ print F "foo\n";
 close F;
 chmod 0644, "/etc/postgresql/$version/main/pg_hba.conf" or die "chmod: $!";
 
-if ($version lt '8.4') {
+if ($version < '8.4') {
     like_program_out 'postgres', "pg_ctlcluster $version main start", 0, 
 	qr/WARNING.*connection to the database failed.*pg_hba.conf/is,
 	'pg_ctlcluster start warns about invalid pg_hba.conf';
@@ -238,13 +249,13 @@ is_program_out 'postgres', "pg_dropcluster $version main", 0, '',
 # graceful handling of absent data dir (might not be mounted)
 ok ((system "pg_createcluster $version main >/dev/null") == 0,
     "pg_createcluster succeeds");
-rename "/var/lib/postgresql", "/var/lib/postgresql.orig" or die "rename: $!";
+rename "/var/lib/postgresql/$version", "/var/lib/postgresql/$version.orig" or die "rename: $!";
 my $outref;
 is ((exec_as 0, "pg_ctlcluster $version main start", $outref, 1), 1,
     'pg_ctlcluster fails on nonexisting /var/lib/postgresql');
 like $$outref, qr/^Error:.*\/var\/lib\/postgresql.*not accessible.*$/, 'proper error message for nonexisting /var/lib/postgresql';
 
-rename "/var/lib/postgresql.orig", "/var/lib/postgresql" or die "rename: $!";
+rename "/var/lib/postgresql/$version.orig", "/var/lib/postgresql/$version" or die "rename: $!";
 is_program_out 'postgres', "pg_ctlcluster $version main start", 0, '',
     'pg_ctlcluster start succeeds again with reappeared /var/lib/postgresql';
 is_program_out 'postgres', "pg_ctlcluster $version main stop", 0, '', 'stopping cluster';
@@ -257,7 +268,7 @@ is ((exec_as 'postgres', "pg_ctlcluster $version main start"), 0,
     'pg_ctlcluster: main cluster on conflicting port starts');
 
 # clusters can run side by side on different socket directories
-set_cluster_socketdir $version, 'other', '/tmp';
+set_cluster_socketdir $version, 'other', $socketdir;
 PgCommon::set_conf_value $version, 'other', 'postgresql.conf',
     'listen_addresses', ''; # otherwise they will conflict on TCP socket
 is ((exec_as 'postgres', "pg_ctlcluster $version other start"), 0,
@@ -265,7 +276,7 @@ is ((exec_as 'postgres', "pg_ctlcluster $version other start"), 0,
 is ((exec_as 'postgres', "pg_ctlcluster $version other stop"), 0);
 
 # ... but will give an error when running on the same port
-set_cluster_socketdir $version, 'other', '/var/run/postgresql';
+set_cluster_socketdir $version, 'other', $PgCommon::rpm ? '/tmp' : '/var/run/postgresql';
 like_program_out 'postgres', "pg_ctlcluster $version other start", 1,
     qr/Port conflict:.*port 5432/,
     'pg_ctlcluster other cluster fails on conflicting port and same socket dir';
@@ -322,28 +333,6 @@ close F;
 
 unlike_program_out 0, "pg_dropcluster $MAJORS[-1] broken", 0, qr/error/i, 
     'pg_dropcluster cleans up broken cluster configuration (/etc with pgdata and postgresql.conf and partial /var)';
-
-check_clean;
-
-# check that a failed pg_createcluster leaves no cruft behind: create a 10 MB
-# loop partition, temporarily mount it to /var/lib/postgresql
-my $loop = new File::Temp (UNLINK => 1) or die "could not create temporary file: $!";
-truncate $loop, 10000000 or die "truncate: $!";
-close $loop;
-END { system "umount /var/lib/postgresql 2>/dev/null; losetup -d /dev/loop7 2>/dev/null; true"; }
-(system "modprobe loop; losetup /dev/loop7 $loop && mkfs.ext2 /dev/loop7 >/dev/null 2>&1 && mount -t ext2 /dev/loop7 /var/lib/postgresql") == 0 or 
-    die 'Could not create and mount loop partition';
-
-like_program_out 0, "LC_MESSAGES=C pg_createcluster $MAJORS[-1] test", 1, qr/No space left on device/i,
-    'pg_createcluster fails due to insufficient disk space';
-
-ok_dir '/var/lib/postgresql', ['lost+found'], 
-    'No files in /var/lib/postgresql /left behind after failed pg_createcluster';
-ok_dir '/etc/postgresql', [], 
-    'No files in /etc/postgresql /left behind after failed pg_createcluster';
-
-(system 'umount /var/lib/postgresql') == 0 or die 'failed to unmount';
-(system "losetup -d /dev/loop7") == 0 or die 'failed to remove loop device';
 
 check_clean;
 

@@ -20,7 +20,7 @@ like_program_out $owner, 'pg_lsclusters -h', 0,
     qr/^$v\s+main\s+5432\s+online\s+$owner/, 
     'pg_lsclusters shows running cluster';
 
-my $master_process = ($v ge '8.2') ? 'postgres' : 'postmaster';
+my $master_process = ($v >= '8.2') ? 'postgres' : 'postmaster';
 like ((ps $master_process), qr/^$owner.*bin\/$master_process .*\/var\/lib\/postgresql\/$v\/main/m,
     "$master_process is running as user $owner");
 
@@ -47,13 +47,16 @@ for my $f (readdir D) {
 @st = stat "/var/log/postgresql/postgresql-$v-main.log";
 is $st[2], 0100640, 'log file has 0640 permissions';
 is $st[4], $owneruid, 'log file is owned by user';
-is $st[5], $ownergid, 'log file is owned by user\'s primary group';
+# the log file gid setting works on RedHat, but nobody has gid 99 there (and
+# there's not good alternative for testing)
+my $loggid = $PgCommon::rpm ? (getgrnam 'adm')[2] : $ownergid;
+is $st[5], $loggid, 'log file is owned by user\'s primary group';
 
 if ($#MAJORS > 0) {
     my $newv = $MAJORS[-1];
 
     my $outref;
-    is ((exec_as 0, "(pg_upgradecluster $v main | sed -e 's/^/STDOUT: /')", $outref, 0), 0, 
+    is ((exec_as 0, "(pg_upgradecluster -v $newv $v main | sed -e 's/^/STDOUT: /')", $outref, 0), 0, 
 	'pg_upgradecluster succeeds');
     like $$outref, qr/Starting target cluster/, 'pg_upgradecluster reported cluster startup';
     like $$outref, qr/Success. Please check/, 'pg_upgradecluster reported successful operation';
@@ -74,7 +77,7 @@ if ($#MAJORS > 0) {
     is $st[5], $ownergid, 'upgraded postgresql.conf dir is owned by user\'s primary group';
     @st = stat "/var/log/postgresql/postgresql-$v-main.log";
     is $st[4], $owneruid, 'upgraded log file is owned by user';
-    is $st[5], $ownergid, 'upgraded log file is owned by user\'s primary group';
+    is $st[5], $loggid, 'upgraded log file is owned by user\'s primary group';
 
     is ((system "pg_dropcluster $newv main --stop"), 0, 'pg_dropcluster');
 } else {
@@ -87,7 +90,7 @@ if ($#MAJORS > 0) {
 # Check proper cleanup
 is ((system "pg_dropcluster $v main --stop"), 0, 'pg_dropcluster');
 is_program_out $owner, 'pg_lsclusters -h', 0, '', 'No clusters left';
-is ((ps 'postmaster'), '', 'No postmaster processes left');
+is ((ps $master_process), '', "No $master_process processes left");
 
 check_clean;
 

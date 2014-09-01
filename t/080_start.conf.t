@@ -81,7 +81,7 @@ if ($#MAJORS == 0) {
     pass 'only one major version installed, skipping upgrade test';
     pass '...';
 } else {
-    like_program_out 0, "pg_upgradecluster $v main", 0, qr/Success/;
+    like_program_out 0, "pg_upgradecluster -v $MAJORS[-1] $v main", 0, qr/Success/;
 }
 
 # check start.conf of old and upgraded cluster
@@ -105,7 +105,7 @@ is_program_out 'postgres', 'pg_lsclusters -h', 0, '', 'no clusters any more';
 
 # create cluster with --start-conf option
 is_program_out 0, "pg_createcluster $v main --start-conf foo", 1, 
-    "Error: Invalid --start-conf value\n",
+    "Error: Invalid --start-conf value: foo\n",
     'pg_createcluster checks --start-conf validity';
 is ((system "pg_createcluster $v main --start-conf manual >/dev/null"), 0, 
     'pg_createcluster checks --start-conf manual');

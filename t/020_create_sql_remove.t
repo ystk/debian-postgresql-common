@@ -4,6 +4,7 @@
 use strict; 
 
 use POSIX qw/dup2/;
+use Time::HiRes qw/usleep/;
 
 use lib 't';
 use TestLib;
@@ -11,7 +12,7 @@ use TestLib;
 use lib '/usr/share/postgresql-common';
 use PgCommon;
 
-use Test::More tests => 115 * ($#MAJORS+1);
+use Test::More tests => 123 * ($#MAJORS+1);
 
 sub check_major {
     my $v = $_[0];
@@ -21,15 +22,19 @@ sub check_major {
 	"pg_createcluster $v main");
 
     # check that a /var/run/postgresql/ pid file is created
-    ok_dir '/var/run/postgresql/', ['.s.PGSQL.5432', '.s.PGSQL.5432.lock', "$v-main.pid"], 
-        'Socket and pid file are in /var/run/postgresql/';
+    unless ($PgCommon::rpm) {
+        ok_dir '/var/run/postgresql/', ['.s.PGSQL.5432', '.s.PGSQL.5432.lock', "$v-main.pid"], 
+            'Socket and pid file are in /var/run/postgresql/';
+    } else {
+        ok_dir '/var/run/postgresql/', ["$v-main.pid"], 'Pid File is in /tmp';
+    }
 
     # verify that exactly one postmaster is running
-    my @pm_pids = pidof (($v ge '8.2') ? 'postgres' : 'postmaster');
+    my @pm_pids = pidof (($v >= '8.2') ? 'postgres' : 'postmaster');
     is $#pm_pids, 0, 'Exactly one postmaster process running';
 
     # check environment
-    my %safe_env = qw/LC_ALL 1 LC_CTYPE 1 LANG 1 PWD 1 PGLOCALEDIR 1 PGSYSCONFDIR 1 PG_GRANDPARENT_PID 1 SHLVL 1 PGDATA 1 _ 1/;
+    my %safe_env = qw/LC_ALL 1 LC_CTYPE 1 LANG 1 PWD 1 PGLOCALEDIR 1 PGSYSCONFDIR 1 PG_GRANDPARENT_PID 1 PG_OOM_ADJUST_FILE 1 PG_OOM_ADJUST_VALUE 1 SHLVL 1 PGDATA 1 _ 1/;
     my %env = pid_env $pm_pids[0];
     foreach (keys %env) {
         fail "postmaster has unsafe environment variable $_" unless exists $safe_env{$_};
@@ -46,7 +51,7 @@ sub check_major {
     is_program_out 'postgres', "pg_ctlcluster $v main restart", 0, '',
         'cluster restarts with new environment file';
 
-    @pm_pids = pidof (($v ge '8.2') ? 'postgres' : 'postmaster');
+    @pm_pids = pidof (($v >= '8.2') ? 'postgres' : 'postmaster');
     is $#pm_pids, 0, 'Exactly one postmaster process running';
     %env = pid_env $pm_pids[0];
     is $env{'PGEXTRAVAR1'}, '1', 'correct value of PGEXTRAVAR1 in environment';
@@ -54,19 +59,28 @@ sub check_major {
 
     # Now there should not be an external PID file any more, since we set it
     # explicitly
-    ok_dir '/var/run/postgresql', ['.s.PGSQL.5432', '.s.PGSQL.5432.lock'], 
-	'Socket, but not PID file in /var/run/postgresql/';
+    unless ($PgCommon::rpm) {
+        ok_dir '/var/run/postgresql', ['.s.PGSQL.5432', '.s.PGSQL.5432.lock'], 
+            'Socket, but not PID file in /var/run/postgresql/';
+    } else {
+        ok_dir '/var/run/postgresql', [], '/var/run/postgresql/ is empty';
+    }
 
     # verify that the correct client version is selected
-    like_program_out 'postgres', 'psql --version', 0, qr/^psql \(PostgreSQL\) $v/,
+    like_program_out 'postgres', 'createdb --version', 0, qr/^createdb \(PostgreSQL\) $v/,
+        'pg_wrapper selects version number of cluster';
+
+    # we always want to use the latest version of "psql", though.
+    like_program_out 'postgres', 'psql --version', 0, qr/^psql \(PostgreSQL\) $ALL_MAJORS[-1]/,
         'pg_wrapper selects version number of cluster';
 
     my $default_log = "/var/log/postgresql/postgresql-$v-main.log";
 
     # verify that the cluster is displayed
     my $ls = `pg_lsclusters -h`;
+    $ls =~ s/\s+/ /g;
     $ls =~ s/\s*$//;
-    is $ls, "$v     main      5432 online postgres /var/lib/postgresql/$v/main       $default_log",
+    is $ls, "$v main 5432 online postgres /var/lib/postgresql/$v/main $default_log",
 	'pg_lscluster reports online cluster on port 5432';
 
     # verify that the log file is actually used
@@ -112,7 +126,7 @@ sub check_major {
 
     # verify that explicitly configured log file trumps log symlink
     PgCommon::set_conf_value ($v, 'main', 'postgresql.conf', 
-        ($v ge '8.3' ? 'logging_collector' : 'redirect_stderr'), 'on');
+        ($v >= '8.3' ? 'logging_collector' : 'redirect_stderr'), 'on');
     PgCommon::set_conf_value $v, 'main', 'postgresql.conf', 'log_filename', "$v#main.log";
     is ((exec_as 'root', "pg_ctlcluster $v main start"), 0, 
         'restarting cluster with explicitly configured log file');
@@ -121,9 +135,11 @@ sub check_major {
     my @l = glob ((PgCommon::cluster_data_directory $v, 'main') .  "/pg_log/$v#main.log*");
     is $#l, 0, 'exactly one log file';
     ok (-e $l[0] && ! -z $l[0], 'custom log is actually used');
-    like_program_out 'postgres', 'pg_lsclusters -h', 0, qr/^$v\s+main.*custom\n$/;
+    like_program_out 'postgres', 'pg_lsclusters -h', 0, qr/^$v\s+main.*$v#main.log\n$/;
 
     # clean up
+    PgCommon::disable_conf_value ($v, 'main', 'postgresql.conf', 
+        ($v >= '8.3' ? 'logging_collector' : 'redirect_stderr'), '');
     PgCommon::disable_conf_value $v, 'main', 'postgresql.conf', 'log_filename', '';
     unlink "/etc/postgresql/$v/main/log";
 
@@ -134,7 +150,11 @@ sub check_major {
     # verify that SSL is enabled (which should work for user postgres in a
     # default installation)
     my $ssl = config_bool (PgCommon::get_conf_value $v, 'main', 'postgresql.conf', 'ssl');
-    is $ssl, 1, 'SSL is enabled';
+    if ($PgCommon::rpm) {
+        is $ssl, undef, 'SSL is disabled';
+    } else {
+        is $ssl, 1, 'SSL is enabled';
+    }
 
     # Create user nobody, a database 'nobodydb' for him, check the database list
     my $outref;
@@ -172,7 +192,8 @@ Bob|1
 	0, qr/^root:/, 'calling PL/PerlU function';
 
     # Check PL/Perl trusted
-    is_program_out 'nobody', 'createlang plperl nobodydb', 0, '', 'createlang plperl succeeds for user nobody';
+    my $pluser = ($v >= '8.3') ? 'nobody' : 'postgres'; # pg_pltemplate allows non-superusers to install trusted languages in 8.3+
+    is_program_out $pluser, 'createlang plperl nobodydb', 0, '', "createlang plperl succeeds for user $pluser";
     is ((exec_as 'nobody', "psql nobodydb -qc \"${fn_cmd};\""), 1, 'creating unsafe PL/Perl function as user nobody fails');
     is_program_out 'nobody', 'psql nobodydb -qc "CREATE FUNCTION remove_vowels(text) RETURNS text AS \'\\$_[0] =~ s/[aeiou]/_/ig; return \\$_[0];\' LANGUAGE plperl;"',
 	0, '', 'creating PL/Perl function as user nobody succeeds';
@@ -187,7 +208,7 @@ Bob|1
 	0, "Foo2\n", 'calling PL/Python function';
 
     # Check PL/Python3 (untrusted)
-    if ($v ge '9.1') {
+    if ($v >= '9.1' and not $PgCommon::rpm) {
 	is_program_out 'postgres', 'createlang plpython3u nobodydb', 0, '', 'createlang plpython3u succeeds for user postgres';
 	is_program_out 'postgres', 'psql nobodydb -qc "CREATE FUNCTION capitalize3(text) RETURNS text AS \'import sys; return args[0].capitalize() + sys.version[0]\' LANGUAGE plpython3u;"',
 	    0, '', 'creating PL/Python3 function as user postgres succeeds';
@@ -243,49 +264,63 @@ Bob|1
     is_program_out 0, "pg_ctlcluster $v main start", 0, '',
         'cluster restarts with pgdata symlink';
 
-    # OOM score adjustment under Linux: postmaster gets bigger shields for >=
-    # 9.1, but client backends stay at default
+    # check properties of backend processes
+    pipe RH, WH;
     my $psql = fork;
     if (!$psql) {
+	close WH;
 	my @pw = getpwnam 'nobody';
 	change_ugid $pw[2], $pw[3];
-	dup2(POSIX::open('/dev/zero', POSIX::O_RDONLY), 0);
+	open(STDIN, "<& RH");
 	dup2(POSIX::open('/dev/null', POSIX::O_WRONLY), 1);
 	exec 'psql', 'nobodydb' or die "could not exec psql process: $!";
     }
+    close RH;
+    select WH; $| = 1; # make unbuffered
 
     my $master_pid = `ps --user postgres hu | grep 'bin/postgres.*-D' | grep -v grep | awk '{print \$2}'`;
     chomp $master_pid;
 
     my $client_pid;
     while (!$client_pid) {
-	sleep 0.1;
+	usleep $delay;
 	$client_pid = `ps --user postgres hu | grep 'postgres: nobody nobodydb' | grep -v grep | awk '{print \$2}'`;
+	($client_pid) = ($client_pid =~ /(\d+)/); # untaint
     }
-    chomp $client_pid;
 
+    # OOM score adjustment under Linux: postmaster gets bigger shields for >=
+    # 9.1, but client backends stay at default
     my $adj;
-    open F, "/proc/$master_pid/oom_adj";
+    open F, "/proc/$master_pid/oom_score_adj";
     $adj = <F>;
     chomp $adj;
     close F;
-    if ($v ge '9.1') {
-	cmp_ok $adj, '<=', -5, 'postgres >= 9.1 master has OOM killer protection';
+    if ($v >= '9.1' and not $PgCommon::rpm) {
+        cmp_ok $adj, '<=', -500, 'postgres master has OOM killer protection';
     } else {
-	is $adj, 0, 'postgres < 9.1 master has no OOM adjustment';
+        is $adj, 0, 'postgres master has no OOM adjustment';
     }
 
-    open F, "/proc/$client_pid/oom_adj";
+    open F, "/proc/$client_pid/oom_score_adj";
     $adj = <F>;
     chomp $adj;
     close F;
     is $adj, 0, 'postgres client backend has no OOM adjustment';
 
-    kill 9, $psql;
+    # test process title update
+    like_program_out 0, "ps h $client_pid", 0, qr/ idle\s*$/, 'process title is idle';
+    print WH "BEGIN;\n";
+    usleep $delay;
+    like_program_out 0, "ps h $client_pid", 0, qr/idle in transaction/, 'process title is idle in transaction';
+    print WH "SELECT pg_sleep(1);\n";
+    usleep $delay;
+    like_program_out 0, "ps h $client_pid", 0, qr/SELECT/, 'process title is SELECT';
+
+    close WH;
     waitpid $psql, 0;
 
     # Drop database and user again.
-    sleep 1;
+    usleep $delay;
     is ((exec_as 'nobody', 'dropdb nobodydb', $outref, 0), 0, 'dropdb nobodydb', );
     is ((exec_as 'postgres', 'dropuser nobody', $outref, 0), 0, 'dropuser nobody');
 

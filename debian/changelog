@@ -1,54 +1,603 @@
-postgresql-common (134wheezy4) stable; urgency=low
+postgresql-common (160) unstable; urgency=medium
 
-  * debian/supported-versions: Use "7|7.*" to recognize wheezy; point releases
-    now increment the second version number component. (Closes: #712586)
-
- -- Christoph Berg <myon@debian.org>  Tue, 27 Aug 2013 10:15:33 +0200
-
-postgresql-common (134wheezy3) unstable; urgency=low
+  [ Martin Pitt ]
+  * supported-versions: Set 9.4 as default for Ubuntu 14.10.
+  * debian/maintscripts-functions: Call update-alternatives under C locale to
+    fix parsing for non-English locales. (LP: #1293596)
+  * pg_createcluster: Fix test if specified owner/group ID is numeric. Thanks
+    Sven Berkvens-Matthijsse! (LP: #1329227)
 
   [ Christoph Berg ]
+  * Use dh-systemd to enable postgresql.service on install. (Closes: #757612)
+  * Set Multi-Arch: foreign in postgresql-common, postgresql-client-common,
+    postgresql-client, and postgresql-doc, and document this in
+    doc/dependencies.{dia,png}. (Closes: #757520)
+  * Update examples in README.Debian for 9.4. (Closes: #756007)
+  * Install README.systemd.
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Mon, 11 Aug 2014 15:39:39 +0200
+
+postgresql-common (159) unstable; urgency=low
+
+  * supported-versions: Set 9.4 as default for jessie and unstable.
+  * systemd unit files are now installed to their proper locations.
+  * Install /usr/lib/tmpfiles.d/postgresql.conf.
+  * pgcommon.sh: New shell function module containing get_release and
+    locale_gen. Used by supported-versions and testsuite; also usable by other
+    packages.
+  * pg_ctlcluster, PgCommon.pm: Fix warning on corrupt empty pid files.
+  * pg_ctlcluster: New --stdlog option to be used with --foreground that
+    redirects stderr to our standard log files. Used in postgresql@.service.
+  * pg_ctlcluster: Ignore errors when stat'ing the logfile.
+  * pg_ctlcluster: use strict.
+  * Debconf translation updates, thanks!
+    + da by Joe Dalton. (Closes: #753952)
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Thu, 24 Jul 2014 11:52:57 +0200
+
+postgresql-common (158) experimental; urgency=medium
+
+  * supported-versions: Add 9.4 on Debian/unstable and pgapt (9.3 is still
+    default).
+  * Set default log_line_prefix = '%t [%p-%l] %q%u@%d '.
+  * Put stats_temp_directory aka pg_stat_tmp into /var/run/postgresql by
+    default. (Closes: #739276)
+  * pg_lsclusters: Print logfile from postgresql.conf when logging_collector
+    in use instead of "custom".
+  * Move pg_{create,ctl,upgrade,drop}cluster.8 to section 1, they are in
+    /usr/bin anyway.
+  * maintscripts-functions: Configure manpage alternatives in -doc packages
+    using SPI_connect.3.gz as master.
+  * pg_upgradecluster: Deprecate krb_srvname in 9.4. Failing upgrade hook
+    scripts will fail the upgrade.
+  * pg_ctlcluster: Configure OOM killer using PG_OOM_ADJUST_FILE in 9.5.
+  * pg_wrapper: Also accept --cluster=ver/name in a single argument.
+  * testsuite: Also mount /dev/shm; with -s, open shell on failure; -f nnn
+    starts tests at this sequence number.
+  * run-upgrade-scripts, t/100_upgrade_scripts.t: Fork and set uid for running
+    the upgrade scripts; use su -c for testing.
+  * Start porting the postgresql-common framework to RedHat, backed by the
+    PGDG PostgreSQL rpm packages.
+  * Debconf translation updates, thanks!
+    + fr by Julien Patriarca. (Closes: #751101)
+    + ja by victory. (Closes: #751131)
+  * debian/copyright: Update copyright holders.
+
+ -- Christoph Berg <myon@debian.org>  Sat, 05 Jul 2014 16:40:16 +0200
+
+postgresql-common (157) unstable; urgency=medium
+
+  * Remove createcluster.conf on purge.
+  * Fix testsuite -i to install packages before invoking unshare so apt still
+    has network access.
+
+ -- Christoph Berg <myon@debian.org>  Fri, 30 May 2014 21:31:36 +0200
+
+postgresql-common (156) unstable; urgency=medium
+
+  [ Christoph Berg ]
+  * pg_upgradecluster: Add missing psql -p argument when determining the
+    number of tablespaces in the old cluster.
+  * Link pg_archivecleanup from /usr/bin. (Closes: #740593)
+  * pg_virtualenv: Use fsync = off for speed.
+  * pg_buildext: Pass -cios options to pg_virtualenv.
+  * t/140_pg_config.t: Versions >= 9.3 have multiarch-enabled libpq et al.
+  * Bump to dh 9.
+
+  [ Martin Pitt ]
+  * Fix typo in German debconf translations. Thanks Rhonda for pointing out!
+
+ -- Christoph Berg <myon@debian.org>  Fri, 30 May 2014 00:00:44 +0200
+
+postgresql-common (155) unstable; urgency=medium
+
+  [ Christoph Berg ]
+  * postgresql-common: Maintain createcluster.conf using ucf, and add a
+    debconf question about the default use of ssl (default true, priority
+    medium). (Closes: #743918)
+  * Use "mount --make-rprivate /" inside our "unshare -m" calls.
+    (See #739593.)
+  * pg_ctlcluster: Add status action, add --foreground option, accept dash
+    (and slash) between version and cluster.
+  * Add systemd unit files as examples (testers welcome!).
+  * postgresql-client: Wrap pg_recvlogical, introduced in 9.4.
+  * t/050_encodings.t: 9.4 emits COPY command tags, suppress with psql -q.
+  * postgresql: Add Suggests: postgresql-doc. (Closes: #743755)
+  * pg_conftool: New script to read and edit PostgreSQL configuration files,
+    based on the existing read/edit functions in PgCommon.pm.
+  * pg_upgradecluster: Don't abort the upgrade if the config file symlinks are
+    already there.
+  * testsuite: Fix testsuite where -v does not include the latest version.
+  * testsuite -v -i will install packages needed for these versions.
+
+  [ Martin Pitt ]
+  * supported-versions: Welcome, Ubuntu 14.10!
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Wed, 21 May 2014 17:34:09 +0200
+
+postgresql-common (154) unstable; urgency=medium
+
+  [ Martin Pitt ]
+  * debian/postgresql-common.preinst: Drop obsolete upgrade migration.
+  * debian/maintscripts-functions, _link_manpages(): The move of pg_basebackup
+    from server to client still affects upgrades from -9.1 to -9.3. Place the
+    upgrade fix here instead of postgresql-9.1.preinst (which does not exist
+    any more now). (LP: #1270597)
+  * Update Vcs-Bzr:, bzr.d.o. does not work any more.
+
+  [ Christoph Berg ]
+  * t/031_errors_disk_full.t: Drop cluster after tests.
+  * testsuite: Always umount the tmpfs overlays.
+
+ -- Christoph Berg <myon@debian.org>  Fri, 21 Feb 2014 08:18:46 +0100
+
+postgresql-common (153) unstable; urgency=medium
+
+  [ Christoph Berg ]
+  * Replace the static logrotate configuration by generating the file
+    dynamically using ucf, triggered by watching /usr/sbin/logrotate.
+    This eases dist-upgrades that upgrade logrotate to >= 3.8 from an older
+    version (squeeze->wheezy, precise->trusty).
+  * postgresql-common.postinst: Stop debconf later so ucf can use it.
+  * postgresql-common.postinst: Call su without - to avoid a warning.
+  * t/003_package_checks.t: Add test case for logrotate.
+  * pg_createcluster, t/001_packages.t: Refactor the ssl cert test, and add
+    matching testcases in the testsuite.
+  * t/020_create_sql_remove.t: Make pipe writes unbuffered.
+  * pg_buildext: Document the loop action (present since version 141).
+  * pg_buildext: Add "installcheck" action for use with autopkgtest.
+  * pg_buildext: Support $action-$version when the loop is contained in the
+    calling script. (Mostly useful for installcheck-x.y.)
+  * postgresql-server-dev-all: Add "make" to depends because pg_buildext is
+    mostly useless without it; extensions using autopkgtest would otherwise
+    need to include it in their debian/tests/control files.
+  * pgxs_debian_control.mk: Add "clean: debian/control" and
+    ".PHONY: debian/control".
+  * pg_virtualenv: Fix exit code shown with -s.
+  * pg_createcluster, pg_virtualenv: -o will set postgresql.conf parameters.
+  * postgresql-common: In /usr/share/postgresql-common/pgdg/,
+    install apt.postgresql.org.sh to enable activating the pgdg repository.
+
+  [ Martin Pitt ]
+  * testsuite, pg_virtualenv: Don't fail if ifconfig is not installed. We
+    don't require it as a dependency, and this breaks e. g. autopkgtests in
+    minimal environments.
+  * t/150_tsearch_stemming.t: Add tests for stemming/searching with non-ASCII
+    characters. (See #689997)
+  * debian/postgresql-common.triggers: Also trigger on
+    /usr/share/postgresql/, so that installation of new server versions builds
+    the corresponding dictionaries.
+  * init.d-functions, start(): Update SELinux label of /run/postgresql if
+    restorecon is installed. Thanks Martin Lang! (Closes: #737661)
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Thu, 06 Feb 2014 15:21:00 +0100
+
+postgresql-common (152) unstable; urgency=low
+
+  [ Martin Pitt ]
+  * debian/backport-ppa: Drop oneiric/quantal for -9.2, only keep
+    lucid/precise.
+  * Drop support for obsolete oom_adj, all kernels in all supported
+    Debian/Ubuntu releases support oom_score_adj. (See #646245)
+  * debian/README.Debian: Fix commands to get a postgres user shell.
+  * Change all "su" invocations to system user to specify an explicit shell,
+    to fix breakage after latest base-passwd 3.5.30 (which changed system
+    users to have no shell).
+  * Bump Standards-Version to 3.9.5 (no changes necessary).
+
+  [ Christoph Berg ]
+  * pg_virtualenv: Fix program name in manpage.
+  * pg_createcluster: --start-conf should override the value from
+    createcluster.conf.
+  * testsuite: Also mount a tmpfs on /etc/postgresql-common.
+
+ -- Martin Pitt <mpitt@debian.org>  Thu, 09 Jan 2014 10:56:12 +0100
+
+postgresql-common (151) unstable; urgency=low
+
+  * pg_createcluster: Create /var/run/postgresql when missing.
+  * pg_virtualenv: Set PG_CONFIG in single version mode.
+  * pg_wrapper: Always use the latest available version of "pg_isready"
+    instead of the target cluster's. pg_isready appeared only in 9.3, but is
+    usable with older versions as well. Suggested by Peter Eisentraut.
+    (Closes: #728599)
+
+ -- Christoph Berg <myon@debian.org>  Thu, 05 Dec 2013 16:32:51 +0100
+
+postgresql-common (150) unstable; urgency=low
+
+  [ Christoph Berg ]
+  * Create the postgres group when missing, and add the postgres user to it.
+    Could happen when the postgres user was created manually.
+
+  [ Martin Pitt ]
+  * debian/supported-versions: Welcome, Ubuntu 14.04! Support 9.3 there.
+
+ -- Martin Pitt <mpitt@debian.org>  Mon, 21 Oct 2013 22:08:20 +0200
+
+postgresql-common (149) unstable; urgency=low
+
+  * debian/supported-versions: Set default version to 9.3. Drop 9.2 from
+    wheezy-backports.
+  * /etc/apt/apt.conf.d/01autoremove-postgresql: Mark ^postgresql- as
+    NeverAutoRemove, so upgrading the "postgresql" meta package doesn't
+    automatically remove access to the old clusters. (Closes: #714725)
+  * pg_wrapper: Print a more informative error message when program to execute
+    was not found in /usr/lib/postgresql.
+  * debian/postgresql-client-common.links: Wrap pg_isready and pg_receivexlog.
+
+ -- Christoph Berg <myon@debian.org>  Mon, 09 Sep 2013 14:15:18 +0200
+
+postgresql-common (148) unstable; urgency=low
+
+  [ Christoph Berg ]
+  * debian/supported-versions:
+    + Interface change: The *last* version returned here is the "default" one.
+    + Wheezy uses "7" in /etc/os-release.
+    + Add 9.3 for pgdg (default on testing/unstable).
+  * debian/rules:
+    + Set FLAVOR variable for the type of build we are doing. Set
+      PG_SUPPORTED_VERSIONS=$FLAVOR for debian/supported-versions so we don't
+      pick up configuration from the build environment.
+    + Pick the default version from the last line of
+      `debian/supported-versions` instead of sorting the output.
+  * debian/postgresql-common.config: Sort versions to determine the latest.
+  * pg_buildext: Support "X.Y+" and "all" in debian/pgversions so packages do
+    not need to hardcode the versions they support, as that's usually not
+    necessary.
+  * pgxs_debian_control.mk: Drop the previously redundant grep check on
+    debian/pgversions which would now break "X.Y+".
+  * t: Move $delay to TestLib.pm and increase to 500ms.
+  * t/005_PgCommon.t: Use twice the delay for waiting for the first nc child.
+
+  [ Martin Pitt ]
+  * debian/postgresql-common.postinst: Don't restart servers in dict update
+    trigger. (Closes: #719282)
+  * debian/README.Debian: Update examples for -9.1 and -9.3.
+
+ -- Martin Pitt <mpitt@debian.org>  Tue, 27 Aug 2013 11:07:48 +0200
+
+postgresql-common (147) unstable; urgency=low
+
+  * Bump "really142" to "really146" to fix an error on apt.postgresql.org.
+
+ -- Christoph Berg <myon@debian.org>  Thu, 18 Jul 2013 09:11:38 +0200
+
+postgresql-common (146) unstable; urgency=low
+
+  [ Christoph Berg ]
+  * debian/supported-versions: Use "7.*" to recognize wheezy; point releases
+    now increment the second version number component. (Closes: #712586)
+  * pg_virtualenv:
+    + On error, show tail of server log file.
+    + When no command is given, open a shell.
+  * pg_createcluster: Add --createclusterconf and --environment options.
+  * pg_ctlcluster: Create stats_temp_directory when missing.
+  * pg_ctlcluster: You must run this program as the cluster owner ... or root.
+  * postgresql-common: Demote dependency on logrotate to recommends.
+    (Closes: #714982).
+
+  [ Peter Eisentraut ]
+  * PgCommon.pm, pg_createcluster, pg_dropcluster: Don't call external
+    programs with full path where not necessary.
+
+ -- Christoph Berg <myon@debian.org>  Tue, 16 Jul 2013 16:11:35 +0200
+
+postgresql-common (145) unstable; urgency=low
+
+  [ Christoph Berg ]
+  * pg_ctlcluster: Use "install" instead of File::Path to create
+    unix_socket_directory. (Introduced in 141, Closes: #710093)
+
+  [ Martin Pitt ]
+  * debian/maintscripts-functions, configure_cluster(): Do not trust the
+    locale from the environment, as programs like ssh and sudo propagate
+    remote and user locale by default. Instead, only use the locale settings
+    from /etc/environment and /etc/default/locale, to prevent trying to
+    configure the default cluster with a nonexisting or hard to predict
+    locale. (LP: #969462, also see Debian #700271)
+
+ -- Christoph Berg <myon@debian.org>  Mon, 10 Jun 2013 17:01:01 +0200
+
+postgresql-common (144) unstable; urgency=low
+
+  * testsuite: Allow overriding the list of versions to test (-v).
+  * 040_upgrade: Add a test case for #688960 ("OLD used in query that is not
+    in a rule").
+  * pg_upgradecluster: Add --quote-all-identifiers to the pg_dump(all)
+    invocations so pg_dump-style upgrades do not fail when keywords get
+    un-reserved. (Closes: #688960; the pg_upgrade part of this will be fixed
+    in PostgreSQL upstream.)
+  * pg_ctlcluster: Add --mode shutdown option.
+  * pg_virtualenv: Allow running as non-root user.
+
+ -- Christoph Berg <myon@debian.org>  Fri, 31 May 2013 21:37:47 -0700
+
+postgresql-common (143) unstable; urgency=low
+
+  * debian/supported-versions: Don't explicitly support 9.3 for
+    testing/unstable yet, it is still in experimental. (Closes: #707675)
+  * debian/rules: Hack the version number of the metapackages to be
+    9.3+142really9.1-..., so that they are bigger than the previous botched
+    versions. This needs to stay until 9.3 actually goes into unstable.
+
+ -- Martin Pitt <mpitt@debian.org>  Fri, 10 May 2013 17:53:49 +0200
+
+postgresql-common (142) unstable; urgency=low
+
+  [ Christoph Berg ]
+  * Make all scripts honor PGSYSCONFDIR (defaulting to
+    /etc/postgresql-common).
+  * The default behavior of pg_createcluster can be configured in
+    /etc/postgresql-common/createcluster.conf. This also allows to disable the
+    creation of "main" clusters when postgresql server packages are installed,
+    and to set parameters in the new postgresql.conf.
+  * pg_createcluster: Move setting of log_line_prefix to createcluster.conf.
+  * debian/postgresql-common.postgresql.init: Do not die of one cluster fails
+    to start. (Closes: #699911)
+  * pg_checksystem: Suppress error message for unavailable filesystems.
+    (Closes: #705219)
+  * pg_upgradecluster: Use a distinct name (pg_hba.conf.pg_upgradecluster) for
+    the pg_hba.conf backup, and handle the case where this file already exists
+    gracefully.
+  * pg_upgradecluster: On upgrades to 9.3, rename unix_socket_directory to
+    unix_socket_directories.
+  * pg_upgradecluster, t/043_upgrade_ssl_cert.t: Copy server.crt and friends
+    in the data directory on upgrade. (Closes: #698958)
+  * pg_ctlcluster: Set LANG so non-ascii chars in the server log are not
+    replaced by '?'. Thanks to Adrian Vondendriesch for help debugging this.
+    (Closes: #671915)
+
+  [ Martin Pitt ]
+  * debian/supported-versions: Add 9.3 for testing/unstable.
+  * debian/supported-versions: Add Ubuntu 13.10.
+  * Bump Standards-Versio to 3.9.4 (no changes necessary).
+  * pg_upgradecluster: For upgrades to 9.3, migrate "replication_timeout" to
+    "wal_sender_timeout".
+  * t/060_obsolete_confparams.t: Add full 9.2 configuration, to test 9.2 → 9.3
+    upgrades.
+
+ -- Martin Pitt <mpitt@debian.org>  Tue, 07 May 2013 11:11:58 +0200
+
+postgresql-common (141) experimental; urgency=low
+
+  [ Christoph Berg ]
+  * debian/maintscripts-functions: Fix configure_client_version to call
+    _link_manpages correctly, spotted by Kris Shannon. (Closes: #701602)
+  * debian/postgresql-common.sysctl: Note that the file is Linux-specifc and
+    do some rewording of the comments.
+  * debian/supported-versions:
+    + Deprecate 8.3 for pgdg builds.
+    + Handle missing os-release and lsb_release gracefully, just print a
+      warning. (Affects squeeze systems, Introduced by the fix for #697182).
+  * pg_buildext: Deprecate <srcdir> parameter. The docs do not mention it
+    anymore, but the script will still accept it.
+  * pg_createcluster, pg_upgradecluster: For 9.2 and higher, use the new
+    ssl_ca_file option instead of creating a root.crt symlink in the data
+    directory. (Related to the fix for #680162 below.)
+  * pg_createcluster: If /etc/postgresql-common/root.crl is present, symlink
+    it (<= 9.1), or set ssl_crl_file (>= 9.2).
+  * pg_ctlcluster: Create (first) unix_socket_directory if missing.
+  * pg_ctlcluster: Document start.conf by pointing at pg_createcluster(8).
+  * pg_lsclusters: Make output column widths dynamically adjust to contents;
+    shorten "Version" in header to "Ver".
+  * pg_upgradecluster: Get cluster encoding before shutting down the cluster
+    so we don't need to restart it in pg_upgrade mode; temporarily start the
+    cluster if needed.
+  * postgresql-client-common: For apt.postgresql.org builds (with "pgdg" in
+    the version number), depend on pgdg-keyring.
+  * Add a "apt.postgresql.org.sh" script to add that archive to sources.list.
+
+  [ Martin Pitt ]
+  * debian/backport-ppa: Stop building raring packages. The PPA is declared
+    deprecated now, moving to apt.postgresql.org.
+  * pg_createcluster: Drop "Moving configuration file.." message as it's not
+    all that interesting and we are going to add more status output.
+  * pg_createcluster: Print configuration and data directory on separate
+    lines, and also show the current locale that the cluster will use.
+    (Closes: #700271)
+  * pg_updatedicts: Cleanup tsearch data files which do not have a
+    corresponding hunspell or myspell dictionary installed any more.
+    (Closes: #689996)
+  * Adjust upgrade tests according to the changed pg_lscluster formatting.
+
+  [ Peter Eisentraut ]
+  * Add support for pg_upgrade: (Closes: #682938)
+    - pg_upgradecluster: Add options to select pg_upgrade instead of
+      dump/restore, and call pg_upgrade when selected.
+    - t/040_upgrade.t: Test all upgrade methods.
+
+ -- Christoph Berg <myon@debian.org>  Wed, 10 Apr 2013 16:25:06 +0200
+
+postgresql-common (140) experimental; urgency=low
+
+  [ Martin Pitt ]
+  * t/001_packages.t: Also check that -contrib is installed.
+  * debian/backport-ppa: Backport -common for Ubuntu 12.10.
+  * PgCommon.pm: Recognize "include_if_exists" directive. (LP: #1098986)
+  * pg_ctlcluster: Recreate a missing /var/log/postgresql/ if needed.
+    (LP: #1009989)
+  * debian/postgresql-client-common.links: Wrap pgbench with pg_wrapper.
+    (LP: #1068194)
+
+  [ Christoph Berg ]
+  * testsuite: The default list of umasks to test (022 077) can be overridden
+    by setting the environment variable PG_UMASKS.
+  * t/003_package_checks.t: Ensure psql is linked against libedit.
+  * t/005_PgCommon.t: Increase sleep time after netcat launch to 200ms.
+  * t/020_create_sql_remove.t: Test process title update.
+  * pg_createcluster: Allow passing of initdb arguments on the command line.
+    If --auth parameters are passed, skip updating the generated pg_hba.conf
+    file.
+  * pg_virtualenv: Allow passing initdb arguments to pg_createcluster.
+  * pg_upgradecluster: Print a helpful message when invoked on the target
+    version. Problem seen on #postgresql.
+  * t/030_errors.t: Adjust testsuite for this.
+  * debian/supported-versions: Handle unset variables from /etc/os-release
+    gracefully. Spotted by x4rlos on #postgresql.
+  * pg_buildext: Set USE_PGXS=1, and srcdir (needed by plr).
+
+ -- Christoph Berg <myon@debian.org>  Thu, 31 Jan 2013 10:36:41 +0100
+
+postgresql-common (139) experimental; urgency=low
+
+  [ Christoph Berg ]
+  * pg_virtualenv: New program to create throw-away clusters for running
+    regression tests.
+  * testsuite: unshare needs "--" or else it eats our options.
+  * testsuite: Require netcat-openbsd to be installed.
+  * testsuite: Move locale generation here from debian/tests/system, also
+    generate en_US.utf8 locale; unset LC_ALL.
+  * Drop debian/tests, moved to the postgresql-* server packages.
+  * testsute 005_PgCommon: Do the ipv4 tests before the ipv6 ones; skip
+    the ipv6 for perl <= 5.10 (i.e. on squeeze and lucid).
+  * PgCommon.pm, pg_ctlcluster, pg_createcluster, t/030_errors.t: 9.3 renames
+    unix_socket_directory to unix_socket_directories.
   * pg_wrapper: Document that PGHOST overrides PGCLUSTER. (Closes: #697291)
   * pg_wrapper: Skip cluster selection if --host is given on the command line.
     (Closes: #637017) While we are at it, improve --port parsing, too.
   * t/010_defaultport_cluster.t: Add test cases for the above pg_wrapper
     changes.
+  * t/040_upgrade.t: dup2 psql stderr to suppress warning 'could not change
+    directory to "/tmp/pgtest'.
   * postgresql-client-common: Add Depends: netbase for getprotobyname() in
     PgCommon.pm. (Closes: #697377)
 
   [ Martin Pitt ]
+  * debian/supported-versions: Read /etc/os-release if present, and fall back
+    to lsb-release. Exit with a proper error message if neither is present.
+    This gets rid of the (currently undeclared) strict dependency on
+    lsb-release. (Closes: #697182)
   * debian/README.Debian: Update versions to 8.4/9.1, as current for Squeeze
     and Wheezy. (Closes: #697239)
 
- -- Christoph Berg <myon@debian.org>  Wed, 09 Jan 2013 17:12:54 +0100
+ -- Christoph Berg <myon@debian.org>  Sun, 06 Jan 2013 10:24:49 +0100
 
-postgresql-common (134wheezy2) unstable; urgency=low
+postgresql-common (138) experimental; urgency=low
 
-  * debian/supported-versions: Add Debian 7.0 "wheezy" to support 9.1 only.
-    This is not a functional change, but avoids the "Unknown Debian release"
-    warning.
+  [ Christoph Berg ]
+  * testsuite: start localhost interface which is down after unshare -n.
+
+  [ Martin Pitt ]
+  * testsuite: Stop currently running clusters, just as the script has done
+    until 136.
+  * testsuite: Use a more elegant way of re-execing ourselves through unshare.
+
+ -- Martin Pitt <mpitt@debian.org>  Sun, 16 Dec 2012 18:57:12 +0100
+
+postgresql-common (137) experimental; urgency=low
+
+  [ Martin Pitt ]
+  * debian/backport-ppa: Disable xz compression for lucid.
+  * debian/backport-ppa: Disable libraries for -9.1/natty as well, built by
+    9.2 now.
+  * debian/backport-ppa: Ensure that backport PPA versions are always smaller
+    than the versions in -updates.
+  * pg_wrapper: Always use the latest available client version of "psql"
+    instead of the target cluster's. psql is backwards compatible to all major
+    versions that we support in any release. Update tests to use "createdb"
+    instead of "psql" for --version tests, and add a new test for the psql
+    special case to t/020_create_sql_remove.t. (Closes: #639108)
   * debian/postgresql-common.triggers: Also watch for changes in
-    /usr/share/hunspell/; pg_updatedicts handles these as well. Cherry-picked
-    from trunk r1217. (Closes: #689994)
+    /usr/share/hunspell/; pg_updatedicts handles these as well.
+    (Closes: #689994)
+  * debian/tests/control: Add netcat-openbsd test dependency for the
+    next_free_port() tests added below.
+  * debian/backport-ppa: Drop natty (EOL), add raring for 9.2.
+  * debian/supported-versions: Add Ubuntu 13.04.
+  * testsuite: Run with overlaid tmpfses on the postgresql /etc/ and /var
+    directories in an unshared namespace. This is more robust against
+    protecting existing clusters, always cleans up after itself properly, and
+    also speeds up testing.
+  * t/031_errors_disk_full.t: Drop check for existence of unshare, as
+    ./testsuite now unconditionally requires it.
+  * debian/postgresql-common.postinst: Only chown /var/lib/postgresql if it
+    does not already have the correct ownership. This avoids failures when the
+    directory is NFS mounted. Thanks Hugh Davenport! (Closes: #693958)
 
- -- Martin Pitt <mpitt@debian.org>  Mon, 05 Nov 2012 08:15:34 +0100
+  [ Christoph Berg ]
+  * testsuite: Move 'disk full' tests from 030_errors to new file
+    031_errors_disk_full.
+  * testsuite: Note that Test::More 0.87 is required for done_testing() in
+    170_extensions.
+  * testsuite 005_PgCommon: Add next_free_port tests (using /bin/nc).
+  * supported-versions: Make output configurable via $PG_SUPPORTED_VERSIONS,
+    ~/.pg_supported_versions, and /etc/postgresql-common/supported_versions.
+    (Closes: #646700)
+  * supported-versions: Add debian-backports and pgdg sections.
+    (Closes: #650680)
+  * For bpo and pgdg builds (determined by the version number), create
+    /etc/postgresql-common/supported_versions with appropriate content.
+  * Replace version string comparisions in perl scripts to use numerical
+    operators, so things will continue to work when PostgreSQL 10.0 is
+    released.
+  * debian/rules: Use sort -n for sorting supported-versions output.
+  * debian/rules: Use apt-cache policy instead of apt-cache show to determine
+    the "candidate" logrotate version.
+  * testsuite 020_create_sql_remove: Fix plperl test to work with 8.2.
+  * testsuite 085_pg_ctl.conf: Skip for 8.2.
 
-postgresql-common (134wheezy1) unstable; urgency=low
+ -- Martin Pitt <mpitt@debian.org>  Sat, 15 Dec 2012 21:32:30 +0100
 
-  * debian/control: Switch Vcs-Bzr: to wheezy branch.
+postgresql-common (136) experimental; urgency=low
+
+  [ Martin Pitt ]
+  * debian/backport-ppa: Do first upload with orig tarball, subsequent ones
+    without.
+  * debian/backport-ppa: Do not run lintian.
+  * debian/backport-ppa: When building postgresql-9.1 for lucid, drop the
+    library packages as they collide with the ones built from postgresql-9.2.
+  * debian/backport-ppa: Build 9.2 for Quantal and Natty.
+  * debian/supported-versions: Add Ubuntu 12.10.
+  * t/030_errors.t: For the "fails on insufficient disk space test", move from
+    setting up a loop device to a tmpfs in unshare -m. This is more robust for
+    cleaning up after itself, and faster as well.
   * pg_ctlcluster: Fix log output to stderr if the log file started out being
-    empty. Cherry-picked from trunk r1204.
-  * pg_buildext: Fix supported-versions not to die when the last version is
-    not supported. Cherry-picked from trunk r1199.
+    empty. Add test case to t/030_errors.t.
   * debian/maintscripts-functions: Only try to remove the tsearch_data
-    directory if it already exists. Thanks Peter Palfrader. Cherry-picked from
-    trunk r1211. (Closes: #688105)
+    directory  if it already exists. Thanks Peter Palfrader. (Closes: #688105)
+
+  [ Christoph Berg ]
+  * pg_buildext: Fix supported-versions not to die when the last version is
+    not supported.
+  * testsuite: Add getopt handling, and make the list of umasks to loop
+    through configurable (-u).
+  * t/001_packages.t: Print list of installed versions for information.
   * As debian/supported-versions is also used at build-time, add a
     build-dependency on lsb-release for lsb_release to be available. Also,
     print supported versions from debian/rules for easier debugging.
-    Cherry-picked from trunk r1206/r1207.
 
- -- Martin Pitt <mpitt@debian.org>  Wed, 03 Oct 2012 22:30:36 +0200
+ -- Martin Pitt <mpitt@debian.org>  Thu, 20 Sep 2012 09:04:26 +0200
+
+postgresql-common (135) experimental; urgency=low
+
+  [ Martin Pitt ]
+  * pg_createcluster: For 9.2 and higher, use the new ssl_{cert,key}_file
+    options instead of creating symlinks in the data directory.
+    (Closes: #680162)
+  * pg_upgradecluster: Set above options to the old cluster's SSL cert/key
+    symlink destinations, if they exist.
+  * debian/maintscripts-functions: Configure alternatives for manpages in
+    -contrib. This will only take effect after (re)installing
+    postgresql-contrib-9.2. (Closes: #680571)
+  * debian/postgresql-common.postgresql.init: Fix "status" output to be more
+    useful and legible, and exit with code 3 if any cluster is down.
+    (Closes: #656363)
+  * debian/postgresql-common.postgresql.init: Show a warning message if no
+    clusters exist. (Closes: #677604)
+  * t/041_upgrade_custompaths.t: Run test with a cluster that is down, to
+    verify that pg_upgradecluster works for non-running clusters, too.
+  * pg_upgradecluster: Move encoding detection after restarting the cluster
+    with restricted connections, and drop the check that the cluster is
+    running. With this, pg_upgradecluster also works for clusters which are
+    not running. (Closes: #681344)
+
+  [ Peter Eisentraut ]
+  * pg_createcluster: For PostgreSQL >= 9.2, use initdb options to set the
+    default authentication methods, instead of modifying the configuration
+    file directly. (Closes: #685043)
+
+ -- Martin Pitt <mpitt@debian.org>  Fri, 17 Aug 2012 15:28:35 +0200
 
 postgresql-common (134) unstable; urgency=low
 
@@ -542,7 +1091,7 @@ postgresql-common (110) unstable; urgency=low
 
   [ Dimitri Fontaine ]
   * Add new package postgresql-server-dev-all:
-    - "pb_buildext" tool for easy building of extension packages for multiple
+    - "pg_buildext" tool for easy building of extension packages for multiple
       server versions.
     - pgxs_debian_control.mk debian/rules include for generating
       debian/control.
