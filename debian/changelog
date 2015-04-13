@@ -1,3 +1,75 @@
+postgresql-common (165) unstable; urgency=medium
+
+  * Debconf translation updates, thanks!
+    + es by Manuel Venturi Porras Peralta. (Closes: #773598)
+
+ -- Christoph Berg <myon@debian.org>  Sun, 04 Jan 2015 18:51:31 +0100
+
+postgresql-common (164) unstable; urgency=medium
+
+  * Init script: Always create /var/run/postgresql on start.
+    (Closes: #772824)
+  * Debconf translation updates, thanks!
+    + pt by Ricardo Silva. (Closes: #767399)
+  * t/100_upgrade_scripts.t: Incompatible with eatmydata, remove from
+    LD_PRELOAD when detected.
+  * t/170_extensions.t: Catch warning with chkpass on 9.5.
+  * debian/supported-versions: Support jessie in backports and
+    apt.postgresql.org, with 9.4 as default.
+  * pgdg/apt.postgresql.org.sh: Support jessie.
+
+ -- Christoph Berg <myon@debian.org>  Wed, 17 Dec 2014 20:00:04 +0100
+
+postgresql-common (163) unstable; urgency=medium
+
+  [ Martin Pitt ]
+  * pg_createcluster: Disable copy-on-write semantics for data directory on
+    btrfs and similar file systems. It eats a lot of performance and isn't
+    necessary for data integrity.
+  * debian/supported-versions: Welcome Ubuntu 15.04!
+
+  [ Christoph Berg ]
+  * Update VCS URLs.
+
+ -- Martin Pitt <mpitt@debian.org>  Sun, 26 Oct 2014 07:04:48 -0400
+
+postgresql-common (162) unstable; urgency=medium
+
+  [ Christoph Berg ]
+  * Move PgCommon.pm to /usr/share/perl5.
+  * t/020_create_sql_remove.t: Test psql -tx alignment to catch a bug in
+    9.4beta2.
+  * supported-versions: Set 9.4 as pgdg default on Ubuntu 14.10.
+  * Debconf translation updates, thanks!
+    + nl by Frans Spiesschaert. (Closes: #762632)
+
+  [ Peter Michael Green ]
+  * Use ID_LIKE to identify deriviatives of Debian and Ubuntu.
+    (Closes: #761020)
+
+  [ Richard Hughes ]
+  * Use Type=forking in postgresql@.service and start before postgresql.
+    (Closes: #759725)
+
+ -- Christoph Berg <myon@debian.org>  Tue, 07 Oct 2014 21:25:25 +0200
+
+postgresql-common (161) unstable; urgency=medium
+
+  * pg_ctlcluster: Refuse root operation when config owner does not match
+    data owner, and config owner is not root.
+  * Stop automatically updating debian/control from debian/control.in in
+    pgxs_debian_control.mk. Instead, implement "checkcontrol" and
+    "updatecontrol" actions in pg_buildext. checkcontrol is run from
+    pgxs_debian_control.mk and will warn if an update is required.
+    Backport and pgdg builds will still automatically update.
+    (Closes: #758570)
+  * pg_virtualenv, testsuite: Use "ip" to start lo when available.
+  * Add iproute2 | net-tools to postgresql-server-dev-all dependencies.
+  * Debconf translation updates, thanks!
+    + it by Luca Monducci. (Closes: #759808)
+
+ -- Christoph Berg <myon@debian.org>  Fri, 15 Aug 2014 10:13:51 +0200
+
 postgresql-common (160) unstable; urgency=medium
 
   [ Martin Pitt ]
